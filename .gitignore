@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*~
+*.swp
+*.egg-info/
+
+# Virtual environment
+venv/
+.venv/
+env/
+.env/
+ENV/
+pip-selfcheck.json
+*. στιλ
+
+# Database file (this will be generated when the app runs)
+data/furniture_management.db
+
+# Uploaded images (runtime data)
+images/*
+!images/.gitkeep # This ensures the .gitkeep file itself is tracked
+
+# IDE / Editor specific
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Streamlit specific (if any local config files are generated)
+.streamlit/
