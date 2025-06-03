@@ -54,10 +54,10 @@ if choice == "Dashboard":
     col5.metric("Total Projects", len(projects))
     
     total_revenue = sum(o['TotalAmount'] for o in orders if o['TotalAmount']) if orders else 0
-    col6.metric("Total Sales Revenue", f"${total_revenue:,.2f}")
+    col6.metric("Total Sales Revenue", f"Rs.{total_revenue:,.2f}")
     
     total_expenses = sum(e['Amount'] for e in expenses if e['Amount']) if expenses else 0
-    col7.metric("Total Expenses", f"${total_expenses:,.2f}")
+    col7.metric("Total Expenses", f"Rs.{total_expenses:,.2f}")
     
     st.subheader("Recent Orders")
     if orders:
@@ -188,7 +188,7 @@ elif choice == "Material Management":
             m_name = st.text_input("Material Name*")
             m_type = st.text_input("Material Type (e.g., Wood, Fabric)")
             m_unit = st.text_input("Unit of Measure (e.g., m, kg, piece)")
-            m_cost_unit = st.number_input("Cost Per Unit ($)", min_value=0.0, format="%.2f")
+            m_cost_unit = st.number_input("Cost Per Unit (Rs.)", min_value=0.0, format="%.2f")
             m_qty = st.number_input("Quantity In Stock", format="%.2f") # Allow float
             selected_sup_name_mat = st.selectbox("Supplier", list(supplier_map_mat.keys()), key="add_mat_supplier")
             m_supplier_id = supplier_map_mat[selected_sup_name_mat]
@@ -243,8 +243,8 @@ elif choice == "Product Management":
             p_cat = st.text_input("Category (e.g., Sofa, Table)")
             p_mat_type = st.text_input("Material Type (e.g., Wood, Fabric)") # Main material
             p_dims = st.text_input("Dimensions (L x W x H)")
-            p_cost = st.number_input("Cost Price ($)", min_value=0.0, format="%.2f")
-            p_sell = st.number_input("Selling Price ($)", min_value=0.0, format="%.2f")
+            p_cost = st.number_input("Cost Price (Rs.)", min_value=0.0, format="%.2f")
+            p_sell = st.number_input("Selling Price (Rs.)", min_value=0.0, format="%.2f")
             p_qty = st.number_input("Quantity In Stock", min_value=0, step=1)
             p_reorder = st.number_input("Reorder Level", min_value=0, step=1)
             
@@ -308,7 +308,7 @@ elif choice == "Project Management":
             pr_end_date = col_end.date_input("Expected End Date", (datetime.now() + pd.Timedelta(days=30)).date() )
             
             pr_status = st.selectbox("Status", project_status_options)
-            pr_budget = st.number_input("Budget ($)", min_value=0.0, format="%.2f")
+            pr_budget = st.number_input("Budget (Rs.)", min_value=0.0, format="%.2f")
             pr_desc = st.text_area("Description")
             
             submitted = st.form_submit_button("Add Project")
@@ -382,7 +382,7 @@ elif choice == "Sales Book (Orders)":
 
             products_for_items_order = db.get_all_products()
             product_map_order_items = {"Select Product": None}
-            product_map_order_items.update({f"{p['ProductName']} (ID: {p['ProductID']}, Price: ${p['SellingPrice']:.2f}, Stock: {p['QuantityInStock']})": p['ProductID'] for p in products_for_items_order})
+            product_map_order_items.update({f"{p['ProductName']} (ID: {p['ProductID']}, Price: Rs.{p['SellingPrice']:.2f}, Stock: {p['QuantityInStock']})": p['ProductID'] for p in products_for_items_order})
 
             item_cols = st.columns([3, 1, 1, 1, 0.5])
             selected_prod_disp_item = item_cols[0].selectbox("Product", list(product_map_order_items.keys()), key="order_item_prod_select")
@@ -395,7 +395,7 @@ elif choice == "Sales Book (Orders)":
                 if prod_details: default_unit_price = float(prod_details['SellingPrice'])
 
             unit_price_item_override = item_cols[2].number_input("Unit Price", min_value=0.0, value=default_unit_price, format="%.2f", key="order_item_price_val")
-            discount_item_val = item_cols[3].number_input("Discount ($)", min_value=0.0, value=0.0, format="%.2f", key="order_item_disc_val")
+            discount_item_val = item_cols[3].number_input("Discount (Rs.)", min_value=0.0, value=0.0, format="%.2f", key="order_item_disc_val")
 
             if item_cols[4].button("➕ Add", key="order_add_item_button"):
                 if prod_id_for_price and qty_item > 0:
@@ -419,7 +419,7 @@ elif choice == "Sales Book (Orders)":
                 temp_items_df = pd.DataFrame(st.session_state.current_order_items)
                 st.dataframe(temp_items_df[['ProductName', 'QuantitySold', 'UnitPriceAtSale', 'Discount', 'LineTotal']], use_container_width=True)
                 current_total_amount = temp_items_df['LineTotal'].sum()
-                st.metric("Calculated Order Total", f"${current_total_amount:,.2f}")
+                st.metric("Calculated Order Total", f"Rs.{current_total_amount:,.2f}")
             else:
                 current_total_amount = 0.0
             
@@ -483,7 +483,7 @@ elif choice == "Expense Tracking":
             desc_exp = st.text_input("Description*")
             cat_exp_opts = ["Operational", "Marketing", "COGS", "Raw Material Purchase", "Salaries", "Utilities", "Rent", "Travel", "Other"]
             cat_exp = st.selectbox("Category", cat_exp_opts)
-            amt_exp = st.number_input("Amount ($)*", min_value=0.01, format="%.2f")
+            amt_exp = st.number_input("Amount (Rs.)*", min_value=0.01, format="%.2f")
             vendor_exp = st.text_input("Vendor/Payee")
             selected_proj_name_exp = st.selectbox("Associated Project (Optional)", list(project_map_exp.keys()), key="exp_proj_db_select")
             exp_project_id = project_map_exp.get(selected_proj_name_exp)
