@@ -6,7 +6,7 @@ import database as db # Import your database module
 from PIL import Image # For image handling
 
 st.set_page_config(layout="wide")
-st.title("🛋️ Furniture Startup Management System (v0.3 - DB Integrated)")
+st.title("🛋️ DYI Furniture Management System (v0.3 - DB Integrated)")
 
 # --- Helper for saving uploaded file ---
 def save_uploaded_file(uploaded_file, product_id):
