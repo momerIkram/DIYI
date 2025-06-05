@@ -57,6 +57,11 @@ if 'selected_customer_id_for_detail_view' not in st.session_state:
     st.session_state.selected_customer_id_for_detail_view = None
 if 'customer_management_action_view' not in st.session_state:
     st.session_state.customer_management_action_view = "List"
+# New state for button stability in Customer Management list view
+if 'active_selection_for_button_cust_id' not in st.session_state:
+    st.session_state.active_selection_for_button_cust_id = None
+if 'active_selection_for_button_cust_name' not in st.session_state:
+    st.session_state.active_selection_for_button_cust_name = None
 
 
 # --- Module Implementations ---
@@ -132,9 +137,7 @@ elif choice == "Customer Management":
     # Default to "List" view if state is somehow lost
     if 'customer_management_action_view' not in st.session_state:
         st.session_state.customer_management_action_view = "List"
-    if 'selected_customer_id_for_detail_view' not in st.session_state: # Should be initialized globally already
-        st.session_state.selected_customer_id_for_detail_view = None
-
+    # selected_customer_id_for_detail_view initialized globally
 
     if st.session_state.customer_management_action_view == "List":
         action = st.selectbox("Action", ["View All Customers", "Add New", "Edit Customer", "Delete Customer"], key="cust_action_selector")
@@ -155,26 +158,38 @@ elif choice == "Customer Management":
                     
                     st.dataframe(df_customers[cols_to_show_filtered],
                                  use_container_width=True,
-                                 key="customer_df_main_list", # Unique key for this dataframe
+                                 key="customer_df_main_list", 
                                  on_select="rerun",
                                  selection_mode="single-row")
 
-                    # Check for selection (attribute might not exist if dataframe is empty or just rendered)
-                    current_selection = st.session_state.get("customer_df_main_list", None)
-                    if current_selection and current_selection.selection.rows:
-                        selected_row_index = current_selection.selection.rows[0]
+                    # Get current dataframe selection state from its widget state
+                    dataframe_selection_state = st.session_state.get("customer_df_main_list", None)
+                    
+                    # Part 1: Update active_selection_for_button_cust_id and _name
+                    if dataframe_selection_state and dataframe_selection_state.selection.rows:
+                        selected_row_index = dataframe_selection_state.selection.rows[0]
                         if not df_customers.empty and selected_row_index < len(df_customers):
-                            selected_customer_id = df_customers.iloc[selected_row_index]['CustomerID']
-                            selected_customer_name = df_customers.iloc[selected_row_index]['CustomerName']
+                            st.session_state.active_selection_for_button_cust_id = df_customers.iloc[selected_row_index]['CustomerID']
+                            st.session_state.active_selection_for_button_cust_name = df_customers.iloc[selected_row_index]['CustomerName']
+                        else:
+                            st.session_state.active_selection_for_button_cust_id = None
+                            st.session_state.active_selection_for_button_cust_name = None
+                    else:
+                        st.session_state.active_selection_for_button_cust_id = None
+                        st.session_state.active_selection_for_button_cust_name = None
 
-                            if st.button(f"View Details for {selected_customer_name} (ID: {selected_customer_id})", key=f"view_detail_btn_for_{selected_customer_id}"):
-                                st.session_state.selected_customer_id_for_detail_view = selected_customer_id
-                                st.session_state.customer_management_action_view = "Details"
-                                st.rerun()
-                        else: # Deselect if index is out of bounds (e.g. after a delete)
-                            st.session_state.selected_customer_id_for_detail_view = None
-                    else: # No row selected or dataframe selection state not ready
-                        st.session_state.selected_customer_id_for_detail_view = None
+                    # Part 2: Render the button IF active_selection_for_button_cust_id is set.
+                    if st.session_state.active_selection_for_button_cust_id is not None:
+                        cust_id_for_btn = st.session_state.active_selection_for_button_cust_id
+                        cust_name_for_btn = str(st.session_state.active_selection_for_button_cust_name) if st.session_state.active_selection_for_button_cust_name is not None else "N/A"
+                        
+                        if st.button(f"View Details for {cust_name_for_btn} (ID: {cust_id_for_btn})", key=f"view_detail_btn_for_{cust_id_for_btn}"):
+                            st.session_state.selected_customer_id_for_detail_view = cust_id_for_btn
+                            st.session_state.customer_management_action_view = "Details"
+                            
+                            st.session_state.active_selection_for_button_cust_id = None 
+                            st.session_state.active_selection_for_button_cust_name = None
+                            st.rerun()
             else:
                 st.info("No customers found or added yet.")
 
@@ -195,7 +210,6 @@ elif choice == "Customer Management":
                         try:
                             db.add_customer(name, email, phone, reference_id, bill_addr, ship_addr or bill_addr, notes)
                             st.success("Customer added successfully!")
-                            # No need to change view, rerun will refresh list if "View All" is default
                         except Exception as e: st.error(f"Error: {e}")
         
         elif action == "Edit Customer":
@@ -209,10 +223,9 @@ elif choice == "Customer Management":
                 selected_cust_disp_edit = st.selectbox("Select Customer to Edit", list(customer_options_edit.keys()), key="edit_cust_select_list_view")
                 if selected_cust_disp_edit:
                     cust_id_to_edit = customer_options_edit[selected_cust_disp_edit]
-                    cust_data_edit_rows = db.get_customer_by_id(cust_id_to_edit) # Expects single or list
+                    cust_data_edit_rows = db.get_customer_by_id(cust_id_to_edit) 
                     
                     if cust_data_edit_rows:
-                        # Handle if get_customer_by_id returns a list or single dict/row
                         cust_data_single_row = cust_data_edit_rows[0] if isinstance(cust_data_edit_rows, list) and cust_data_edit_rows else cust_data_edit_rows
                         cust_data_edit = dict(cust_data_single_row) if cust_data_single_row else None
 
@@ -257,7 +270,9 @@ elif choice == "Customer Management":
                         try:
                             db.delete_customer(cust_id_to_del)
                             st.success(f"Customer {selected_cust_disp_del} deleted successfully!")
-                            st.session_state.selected_customer_id_for_detail_view = None # Clear if deleted
+                            st.session_state.selected_customer_id_for_detail_view = None 
+                            st.session_state.active_selection_for_button_cust_id = None # Clear button state too
+                            st.session_state.active_selection_for_button_cust_name = None
                             st.rerun()
                         except Exception as e:
                             st.error(f"Error deleting customer: {e}")
@@ -271,10 +286,9 @@ elif choice == "Customer Management":
         st.subheader("View Customer Details")
         if st.session_state.selected_customer_id_for_detail_view:
             cust_id = st.session_state.selected_customer_id_for_detail_view
-            customer_data_raw = db.get_customer_by_id(cust_id) # Expects single row/dict or list of one
+            customer_data_raw = db.get_customer_by_id(cust_id) 
 
             if customer_data_raw:
-                # Ensure customer_data is a dict
                 customer_data_single = customer_data_raw[0] if isinstance(customer_data_raw, list) and customer_data_raw else customer_data_raw
                 customer_data = dict(customer_data_single) if customer_data_single else None
 
@@ -345,15 +359,15 @@ elif choice == "Customer Management":
                     st.warning("Could not process customer data. The customer may have been deleted or data is malformed.")
                     st.session_state.customer_management_action_view = "List"
                     st.session_state.selected_customer_id_for_detail_view = None
-                    st.rerun() # Go back to list
+                    st.rerun() 
             else:
                 st.warning("Could not fetch customer data (customer might be deleted).")
                 st.session_state.customer_management_action_view = "List"
                 st.session_state.selected_customer_id_for_detail_view = None
-                st.rerun() # Go back to list
+                st.rerun() 
         else:
             st.info("No customer selected for details. Please select one from the list.")
-            st.session_state.customer_management_action_view = "List" # Go back to list
+            st.session_state.customer_management_action_view = "List" 
             st.rerun()
 
 
@@ -1604,4 +1618,4 @@ elif choice == "Reports":
 
 
 st.sidebar.markdown("---")
-st.sidebar.info("Management System v0.6.1 - Customer Detail Refactor")
+st.sidebar.info("Bachat-Management System")
