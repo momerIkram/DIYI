@@ -1,3 +1,4 @@
+--- START OF FILE database.py ---
 
 import sqlite3
 import os
@@ -5,8 +6,8 @@ from datetime import datetime
 
 DATABASE_DIR = "data"
 DATABASE_NAME = os.path.join(DATABASE_DIR, "furniture_management.db")
-IMAGE_DIR = "images" # This should ideally be outside 'data' if 'data' is just for DBs/receipts
-RECEIPT_DIR = os.path.join("data", "receipts") # Kept as is
+IMAGE_DIR = "images"
+RECEIPT_DIR = os.path.join("data", "receipts")
 
 if not os.path.exists(DATABASE_DIR):
     os.makedirs(DATABASE_DIR)
@@ -45,7 +46,14 @@ def init_db():
     )
     ''')
     if not column_exists(cursor, "customers", "ReferenceID"):
-        cursor.execute("ALTER TABLE customers ADD COLUMN ReferenceID TEXT UNIQUE")
+        cursor.execute("ALTER TABLE customers ADD COLUMN ReferenceID TEXT")
+        print("INFO: Added ReferenceID column to customers table.")
+    try:
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_ReferenceID ON customers (ReferenceID)")
+        # print("INFO: Ensured UNIQUE index idx_customers_ReferenceID exists on customers.ReferenceID.")
+    except sqlite3.OperationalError as e:
+        print(f"WARNING: Could not create UNIQUE index on customers.ReferenceID. Data might not be unique or column might not allow UNIQUE for existing NULLs if DB treats them non-distinctly for index. Error: {e}")
+
 
     # Suppliers
     cursor.execute('''
@@ -59,9 +67,14 @@ def init_db():
     )
     ''')
     if not column_exists(cursor, "suppliers", "ReferenceID"):
-        cursor.execute("ALTER TABLE suppliers ADD COLUMN ReferenceID TEXT UNIQUE")
+        cursor.execute("ALTER TABLE suppliers ADD COLUMN ReferenceID TEXT")
+        print("INFO: Added ReferenceID column to suppliers table.")
+    try:
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_suppliers_ReferenceID ON suppliers (ReferenceID)")
+    except sqlite3.OperationalError as e:
+        print(f"WARNING: Could not create UNIQUE index on suppliers.ReferenceID. Error: {e}")
 
-    # Products (Furniture)
+    # Products
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS products (
         ProductID INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,7 +95,13 @@ def init_db():
     )
     ''')
     if not column_exists(cursor, "products", "ReferenceID"):
-        cursor.execute("ALTER TABLE products ADD COLUMN ReferenceID TEXT UNIQUE")
+        cursor.execute("ALTER TABLE products ADD COLUMN ReferenceID TEXT")
+        print("INFO: Added ReferenceID column to products table.")
+    try:
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_products_ReferenceID ON products (ReferenceID)")
+    except sqlite3.OperationalError as e:
+        print(f"WARNING: Could not create UNIQUE index on products.ReferenceID. Error: {e}")
+
 
     # Materials
     cursor.execute('''
@@ -99,7 +118,12 @@ def init_db():
     )
     ''')
     if not column_exists(cursor, "materials", "ReferenceID"):
-        cursor.execute("ALTER TABLE materials ADD COLUMN ReferenceID TEXT UNIQUE")
+        cursor.execute("ALTER TABLE materials ADD COLUMN ReferenceID TEXT")
+        print("INFO: Added ReferenceID column to materials table.")
+    try:
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_materials_ReferenceID ON materials (ReferenceID)")
+    except sqlite3.OperationalError as e:
+        print(f"WARNING: Could not create UNIQUE index on materials.ReferenceID. Error: {e}")
 
     # Projects
     cursor.execute('''
@@ -114,10 +138,16 @@ def init_db():
     )
     ''')
     if not column_exists(cursor, "projects", "ReferenceID"):
-        cursor.execute("ALTER TABLE projects ADD COLUMN ReferenceID TEXT UNIQUE")
-    if not column_exists(cursor, "projects", "CustomerID"): # Ensure CustomerID exists
-        cursor.execute("ALTER TABLE projects ADD COLUMN CustomerID INTEGER REFERENCES customers(CustomerID) ON DELETE SET NULL")
+        cursor.execute("ALTER TABLE projects ADD COLUMN ReferenceID TEXT")
+        print("INFO: Added ReferenceID column to projects table.")
+    try:
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_ReferenceID ON projects (ReferenceID)")
+    except sqlite3.OperationalError as e:
+        print(f"WARNING: Could not create UNIQUE index on projects.ReferenceID. Error: {e}")
 
+    if not column_exists(cursor, "projects", "CustomerID"):
+        cursor.execute("ALTER TABLE projects ADD COLUMN CustomerID INTEGER REFERENCES customers(CustomerID) ON DELETE SET NULL")
+        print("INFO: Added CustomerID column to projects table.")
 
     # Supplier Services
     cursor.execute('''
@@ -137,7 +167,12 @@ def init_db():
     )
     ''')
     if not column_exists(cursor, "supplier_services", "ReferenceID"):
-        cursor.execute("ALTER TABLE supplier_services ADD COLUMN ReferenceID TEXT UNIQUE")
+        cursor.execute("ALTER TABLE supplier_services ADD COLUMN ReferenceID TEXT")
+        print("INFO: Added ReferenceID column to supplier_services table.")
+    try:
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_supplier_services_ReferenceID ON supplier_services (ReferenceID)")
+    except sqlite3.OperationalError as e:
+        print(f"WARNING: Could not create UNIQUE index on supplier_services.ReferenceID. Error: {e}")
 
 
     # Orders
@@ -157,22 +192,13 @@ def init_db():
     )
     ''')
     if not column_exists(cursor, "orders", "ReferenceID"):
-        cursor.execute("ALTER TABLE orders ADD COLUMN ReferenceID TEXT UNIQUE")
+        cursor.execute("ALTER TABLE orders ADD COLUMN ReferenceID TEXT")
+        print("INFO: Added ReferenceID column to orders table.")
+    try:
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_ReferenceID ON orders (ReferenceID)")
+    except sqlite3.OperationalError as e:
+        print(f"WARNING: Could not create UNIQUE index on orders.ReferenceID. Error: {e}")
 
-    # Order Items
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS order_items (
-        OrderItemID INTEGER PRIMARY KEY AUTOINCREMENT,
-        OrderID INTEGER NOT NULL,
-        ProductID INTEGER NOT NULL,
-        QuantitySold INTEGER,
-        UnitPriceAtSale REAL,
-        Discount REAL,
-        LineTotal REAL,
-        FOREIGN KEY (OrderID) REFERENCES orders (OrderID) ON DELETE CASCADE,
-        FOREIGN KEY (ProductID) REFERENCES products (ProductID) ON DELETE RESTRICT
-    )
-    ''')
 
     # Expenses
     cursor.execute('''
@@ -189,11 +215,27 @@ def init_db():
     )
     ''')
     if not column_exists(cursor, "expenses", "ReferenceID"):
-        cursor.execute("ALTER TABLE expenses ADD COLUMN ReferenceID TEXT UNIQUE")
-    # If SupplierServiceID was intended to be a foreign key to link expenses directly to services
-    # if not column_exists(cursor, "expenses", "SupplierServiceID"):
-    #    cursor.execute("ALTER TABLE expenses ADD COLUMN SupplierServiceID INTEGER REFERENCES supplier_services(ServiceID) ON DELETE SET NULL")
+        cursor.execute("ALTER TABLE expenses ADD COLUMN ReferenceID TEXT")
+        print("INFO: Added ReferenceID column to expenses table.")
+    try:
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_expenses_ReferenceID ON expenses (ReferenceID)")
+    except sqlite3.OperationalError as e:
+        print(f"WARNING: Could not create UNIQUE index on expenses.ReferenceID. Error: {e}")
 
+    # Order Items
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS order_items (
+        OrderItemID INTEGER PRIMARY KEY AUTOINCREMENT,
+        OrderID INTEGER NOT NULL,
+        ProductID INTEGER NOT NULL,
+        QuantitySold INTEGER,
+        UnitPriceAtSale REAL,
+        Discount REAL,
+        LineTotal REAL,
+        FOREIGN KEY (OrderID) REFERENCES orders (OrderID) ON DELETE CASCADE,
+        FOREIGN KEY (ProductID) REFERENCES products (ProductID) ON DELETE RESTRICT
+    )
+    ''')
 
     # Invoices
     cursor.execute('''
@@ -206,7 +248,7 @@ def init_db():
         DueDate TEXT NOT NULL,
         PaymentDate TEXT,
         TotalAmount REAL NOT NULL,
-        Status TEXT NOT NULL, 
+        Status TEXT NOT NULL,
         Notes TEXT,
         FOREIGN KEY (ProjectID) REFERENCES projects (ProjectID) ON DELETE RESTRICT,
         FOREIGN KEY (CustomerID) REFERENCES customers (CustomerID) ON DELETE RESTRICT
@@ -249,7 +291,6 @@ def get_all_customers(search_term=""):
     query = "SELECT * FROM customers"
     params = []
     if search_term:
-        # Ensure ReferenceID exists before querying it for search; init_db should handle this
         query += " WHERE CustomerName LIKE ? OR Email LIKE ? OR ReferenceID LIKE ? OR Phone LIKE ?"
         term = f"%{search_term}%"
         params.extend([term, term, term, term])
@@ -271,19 +312,18 @@ def update_customer(cust_id, name, email, phone, reference_id_input, bill_addr, 
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        current_customer = get_customer_by_id(cust_id)
-        if not current_customer:
+        current_customer_row = get_customer_by_id(cust_id)
+        if not current_customer_row:
             raise ValueError(f"Customer with ID {cust_id} not found.")
+        current_customer = dict(current_customer_row)
 
-        # Determine the ReferenceID to set
-        final_reference_id = current_customer['ReferenceID'] # Default to current
-        if reference_id_input and reference_id_input.strip() and reference_id_input.strip() != current_customer['ReferenceID']:
+        final_reference_id = current_customer.get('ReferenceID') # Default to current
+        if reference_id_input and reference_id_input.strip() and reference_id_input.strip() != current_customer.get('ReferenceID'):
             final_reference_id = reference_id_input.strip()
-        elif not current_customer['ReferenceID'] and reference_id_input and reference_id_input.strip(): # If current is NULL/empty and input is provided
+        elif not current_customer.get('ReferenceID') and reference_id_input and reference_id_input.strip():
             final_reference_id = reference_id_input.strip()
-        elif not current_customer['ReferenceID'] and not (reference_id_input and reference_id_input.strip()): # Current is NULL, input is NULL, generate
-            final_reference_id = f"CUST-{cust_id:06d}"
-
+        elif not current_customer.get('ReferenceID') and not (reference_id_input and reference_id_input.strip()):
+             final_reference_id = f"CUST-{cust_id:06d}"
 
         cursor.execute('''
         UPDATE customers
@@ -375,9 +415,9 @@ def update_supplier(sup_id, name, contact_person, email, phone, address):
         ''', (name, contact_person, email, phone, address, sup_id))
         conn.commit()
     except sqlite3.IntegrityError:
-        conn.rollback() # Added rollback
+        conn.rollback()
         raise ValueError(f"Supplier name '{name}' might already exist for another supplier.")
-    except Exception as e: # Generic catch
+    except Exception as e:
         conn.rollback()
         raise e
     finally:
@@ -456,7 +496,6 @@ def update_product(prod_id, name, sku, desc, category, material_type, dims, cost
     cursor = conn.cursor()
     last_update = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
-        # Ensure SKU is not empty for ReferenceID generation if used
         new_reference_id = sku if sku and sku.strip() else f"PROD-{prod_id:06d}"
         cursor.execute('''
         UPDATE products
@@ -467,9 +506,9 @@ def update_product(prod_id, name, sku, desc, category, material_type, dims, cost
         ''', (name, sku, new_reference_id, desc, category, material_type, dims, cost, sell, qty, reorder, supplier_id, image_path, last_update, prod_id))
         conn.commit()
     except sqlite3.IntegrityError:
-        conn.rollback() # Added rollback
+        conn.rollback()
         raise ValueError(f"New SKU '{sku}' or ReferenceID '{new_reference_id}' might already exist for another product.")
-    except Exception as e: # Generic catch
+    except Exception as e:
         conn.rollback()
         raise e
     finally:
@@ -494,9 +533,9 @@ def delete_product(product_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        product_row = get_product_by_id(product_id) # Fetch as row
+        product_row = get_product_by_id(product_id)
         if product_row:
-            product = dict(product_row) # Convert to dict
+            product = dict(product_row)
             if product.get('ImagePath') and os.path.exists(product['ImagePath']):
                 try:
                     os.remove(product['ImagePath'])
@@ -507,7 +546,7 @@ def delete_product(product_id):
         conn.commit()
     except sqlite3.IntegrityError as e:
         conn.rollback()
-        raise ValueError(f"Cannot delete product (ID: {product_id}). It is referenced in order items or other dependent tables. Error: {e}")
+        raise ValueError(f"Cannot delete product (ID: {product_id}). It is referenced in order items. Error: {e}")
     except Exception as e:
         conn.rollback()
         raise e
@@ -577,9 +616,9 @@ def update_material(mat_id, name, material_type, unit, cost_unit, qty, supplier_
         ''', (name, material_type, unit, cost_unit, qty, supplier_id, last_update, mat_id))
         conn.commit()
     except sqlite3.IntegrityError:
-        conn.rollback() # Added rollback
+        conn.rollback()
         raise ValueError(f"Material name '{name}' might already exist for another material.")
-    except Exception as e: # Generic catch
+    except Exception as e:
         conn.rollback()
         raise e
     finally:
@@ -627,7 +666,6 @@ def get_all_projects(search_term=""):
     """
     params = []
     if search_term:
-        # Ensure c.ReferenceID is only used if the column exists (init_db handles adding it)
         query += " WHERE (p.ProjectName LIKE ? OR c.CustomerName LIKE ? OR c.ReferenceID LIKE ? OR p.Status LIKE ? OR p.ReferenceID LIKE ?)"
         term = f"%{search_term}%"
         params.extend([term, term, term, term, term])
@@ -711,8 +749,8 @@ def add_supplier_service(supplier_id, project_id, service_name, service_type, se
             new_expense_pk_id = add_expense(
                 exp_date=service_date, desc=expense_desc, category="Supplier Services", amount=cost,
                 vendor=supplier_name_for_expense, project_id=project_id,
-                receipt_ref=f"ServRef: {reference_id}" + (f", ReceiptFile: {os.path.basename(receipt_path)}" if receipt_path else ""),
-                is_internal_call=True # Suppress re-raising error for internal calls
+                receipt_ref=f"ServRef: {reference_id}" + (f", ReceiptFile: {os.path.basename(receipt_path)}" if receipt_path and os.path.exists(receipt_path) else ""), # Check receipt_path
+                is_internal_call=True
             )
             if new_expense_pk_id:
                 cursor.execute("UPDATE supplier_services SET IsExpenseLogged = 1 WHERE ServiceID = ?", (service_pk_id,))
@@ -761,14 +799,12 @@ def get_supplier_service_by_id(service_id):
     conn.close()
     return service
 
-# Modified to include is_expense_logged_param
 def update_supplier_service(service_id, supplier_id, project_id, service_name, service_type, service_date, cost, receipt_path, description, is_expense_logged_param):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
         old_service_data_row = get_supplier_service_by_id(service_id)
         old_service_data = dict(old_service_data_row) if old_service_data_row else None
-
 
         cursor.execute('''
         UPDATE supplier_services
@@ -777,18 +813,12 @@ def update_supplier_service(service_id, supplier_id, project_id, service_name, s
         WHERE ServiceID = ?
         ''', (supplier_id, project_id, service_name, service_type, service_date, cost, receipt_path, description, 1 if is_expense_logged_param else 0, service_id))
 
-        if old_service_data and old_service_data['IsExpenseLogged']:
-            cost_changed = old_service_data['Cost'] != cost
-            date_changed = old_service_data['ServiceDate'] != service_date
-            project_changed = old_service_data.get('ProjectID') != project_id # Use .get for safety
-            supplier_changed = old_service_data.get('SupplierID') != supplier_id
-            service_name_changed = old_service_data.get('ServiceName') != service_name
-
-            if cost_changed or date_changed or project_changed or supplier_changed or service_name_changed:
-                # This is where you might try to find the linked expense and update it or advise manual action.
-                # For now, a print warning is a basic step.
-                print(f"WARNING in database.py update_supplier_service: Service ID {service_id} (Ref: {old_service_data.get('ReferenceID', 'N/A')}) details changed. "
-                      f"The associated auto-logged expense might need manual review. IsExpenseLogged flag was: {old_service_data['IsExpenseLogged']}, now set based on param: {is_expense_logged_param}.")
+        if old_service_data and old_service_data.get('IsExpenseLogged'): # Use .get for safety
+            cost_changed = old_service_data.get('Cost') != cost
+            date_changed = old_service_data.get('ServiceDate') != service_date
+            # ... other checks ...
+            if cost_changed or date_changed: # Add other conditions as needed
+                 print(f"WARNING in database.py update_supplier_service: Service ID {service_id} details changed. Associated auto-logged expense might need manual review.")
         conn.commit()
     except Exception as e:
         conn.rollback()
@@ -811,7 +841,7 @@ def delete_supplier_service(service_id):
                     print(f"Error deleting receipt file {service_info['ReceiptPath']}: {e}")
 
             if service_info.get('IsExpenseLogged'):
-                print(f"INFO: Service ID {service_id} (Ref: {service_info.get('ReferenceID', 'N/A')}) is being deleted. The associated auto-logged expense may need to be manually reviewed or deleted from Expense Tracking.")
+                print(f"INFO: Service ID {service_id} (Ref: {service_info.get('ReferenceID', 'N/A')}) is being deleted. The associated auto-logged expense may need manual review.")
 
         cursor.execute("DELETE FROM supplier_services WHERE ServiceID = ?", (service_id,))
         conn.commit()
@@ -878,7 +908,7 @@ def get_all_orders(search_term="", limit=None):
         term = f"%{search_term}%"
         params.extend([term, term, term, term, term, term])
     query += " ORDER BY o.OrderDate DESC, o.OrderID DESC"
-    if limit and isinstance(limit, int) and limit > 0: # Basic validation for limit
+    if limit and isinstance(limit, int) and limit > 0:
         query += f" LIMIT {limit}"
     cursor.execute(query, params)
     orders = cursor.fetchall()
@@ -903,16 +933,18 @@ def update_order_basic_info(order_id, order_date, customer_id, project_id, statu
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        current_order = get_order_by_id(order_id)
-        if not current_order:
+        current_order_row = get_order_by_id(order_id)
+        if not current_order_row:
             raise ValueError(f"Order with ID {order_id} not found.")
+        current_order = dict(current_order_row)
 
-        final_reference_id = current_order['ReferenceID']
-        if reference_id_input and reference_id_input.strip() and reference_id_input.strip() != current_order['ReferenceID']:
+
+        final_reference_id = current_order.get('ReferenceID')
+        if reference_id_input and reference_id_input.strip() and reference_id_input.strip() != current_order.get('ReferenceID'):
             final_reference_id = reference_id_input.strip()
-        elif not current_order['ReferenceID'] and reference_id_input and reference_id_input.strip():
+        elif not current_order.get('ReferenceID') and reference_id_input and reference_id_input.strip():
             final_reference_id = reference_id_input.strip()
-        elif not current_order['ReferenceID'] and not (reference_id_input and reference_id_input.strip()):
+        elif not current_order.get('ReferenceID') and not (reference_id_input and reference_id_input.strip()):
              final_reference_id = f"ORD-{order_id:06d}"
 
 
@@ -996,12 +1028,11 @@ def add_expense(exp_date, desc, category, amount, vendor, project_id, receipt_re
         if not is_internal_call:
             raise e
         else:
-            # For internal calls (like from add_supplier_service), don't crash the parent, just log and return None
             print(f"INTERNAL ERROR during add_expense (desc: '{desc}', amount: {amount}): {e}")
-            return None # Indicate failure
+            return None
     finally:
         conn.close()
-    return expense_pk_id # Return ID on success
+    return expense_pk_id
 
 
 def get_all_expenses(search_term=""):
@@ -1041,9 +1072,11 @@ def get_next_invoice_reference_id():
     conn = get_db_connection()
     cursor = conn.cursor()
     year_month = datetime.now().strftime("%Y%m")
-    cursor.execute("SELECT MAX(InvoiceReferenceID) FROM invoices WHERE InvoiceReferenceID LIKE ?", (f"INV-{year_month}-%",))
-    max_ref = cursor.fetchone()[0]
-    conn.close()
+    like_pattern = f"INV-{year_month}-%"
+    
+    cursor.execute("SELECT MAX(InvoiceReferenceID) FROM invoices WHERE InvoiceReferenceID LIKE ?", (like_pattern,))
+    max_ref_row = cursor.fetchone()
+    max_ref = max_ref_row[0] if max_ref_row else None
     
     next_num = 1
     if max_ref:
@@ -1051,11 +1084,11 @@ def get_next_invoice_reference_id():
             last_num_str = max_ref.split('-')[-1]
             next_num = int(last_num_str) + 1
         except (IndexError, ValueError):
-            # Fallback if parsing fails, though less likely with the LIKE query
-            cursor.execute("SELECT COUNT(*) FROM invoices WHERE InvoiceReferenceID LIKE ?", (f"INV-{year_month}-%",))
-            next_num = cursor.fetchone()[0] +1
-
-
+            # Fallback if parsing fails, count existing for the month as a rough estimate
+            cursor.execute("SELECT COUNT(*) FROM invoices WHERE InvoiceReferenceID LIKE ?", (like_pattern,))
+            count_row = cursor.fetchone()
+            next_num = (count_row[0] if count_row else 0) + 1
+    conn.close()
     return f"INV-{year_month}-{next_num:04d}"
 
 
@@ -1073,6 +1106,10 @@ def add_invoice(invoice_reference_id, project_id, customer_id, issue_date, due_d
         conn.rollback()
         if "UNIQUE constraint failed: invoices.InvoiceReferenceID" in str(e):
             raise ValueError(f"Invoice Reference ID '{invoice_reference_id}' already exists.")
+        # Check for other foreign key violations if needed
+        # elif "FOREIGN KEY constraint failed" in str(e):
+        #     # Determine which FK failed if possible, or generic message
+        #     raise ValueError(f"Invalid ProjectID or CustomerID provided for the invoice. Details: {e}")
         raise e
     except Exception as e:
         conn.rollback()
@@ -1091,9 +1128,9 @@ def get_all_invoices(search_term=""):
     """
     params = []
     if search_term:
-        query += " WHERE (i.InvoiceReferenceID LIKE ? OR p.ProjectName LIKE ? OR c.CustomerName LIKE ? OR i.Status LIKE ?)" # Add c.ReferenceID, p.ReferenceID searches if needed
+        query += " WHERE (i.InvoiceReferenceID LIKE ? OR p.ProjectName LIKE ? OR c.CustomerName LIKE ? OR i.Status LIKE ? OR c.ReferenceID LIKE ? OR p.ReferenceID LIKE ?)"
         term = f"%{search_term}%"
-        params.extend([term, term, term, term])
+        params.extend([term, term, term, term, term, term])
     query += " ORDER BY i.IssueDate DESC, i.InvoiceID DESC"
     cursor.execute(query, params)
     invoices = cursor.fetchall()
@@ -1193,12 +1230,17 @@ def get_projects_by_customer_id(customer_id):
 
 # --- Helper ---
 def rows_to_dicts(rows):
-    if rows is None: return []
-    # If rows is already a list of dicts (e.g., from another processing step), return as is.
-    if rows and isinstance(rows[0], dict):
+    if not rows:
+        return []
+    if isinstance(rows[0], dict): # Check if already list of dicts
         return rows
-    return [dict(row) for row in rows]
+    if isinstance(rows[0], sqlite3.Row): # Check if list of sqlite3.Row
+        return [dict(row) for row in rows]
+    # If it's a single sqlite3.Row (though functions usually return lists or None for single item)
+    # This case is less likely given the typical usage pattern.
+    # Consider if single item fetches should return dict directly or None.
+    # For now, assume 'rows' is a list or None.
+    return [] # Fallback for unexpected type
 
 # Call init_db() once when the module is imported.
-# This ensures the database and tables are set up.
 init_db()
