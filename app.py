@@ -170,7 +170,7 @@ elif choice == "Customer Management":
                             if st.button(f"View Details for {selected_customer_name} (ID: {selected_customer_id})", key=f"view_detail_btn_for_{selected_customer_id}"):
                                 st.session_state.selected_customer_id_for_detail_view = selected_customer_id
                                 st.session_state.customer_management_action_view = "Details"
-                                st.experimental_rerun()
+                                st.rerun()
                         else: # Deselect if index is out of bounds (e.g. after a delete)
                             st.session_state.selected_customer_id_for_detail_view = None
                     else: # No row selected or dataframe selection state not ready
