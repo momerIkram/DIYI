@@ -6,7 +6,7 @@ import database as db # Your database module
 from PIL import Image
 
 st.set_page_config(layout="wide")
-st.title("🛋️ Furniture Startup Management System (v0.5 - Supplier Services)")
+st.title("🛋️ DYI FurnitureManagement System")
 
 # --- Helper for saving uploaded file (modified for receipts) ---
 def save_uploaded_receipt(uploaded_file, service_id): # Changed parameters
