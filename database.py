@@ -17,7 +17,6 @@ if not os.path.exists(RECEIPT_DIR):
 def get_db_connection():
     conn = sqlite3.connect(DATABASE_NAME, timeout=10)
     conn.row_factory = sqlite3.Row
-    # Enable foreign key support for every connection
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
@@ -188,10 +187,32 @@ def init_db():
         TotalAmount REAL NOT NULL,
         Status TEXT NOT NULL, -- e.g., Draft, Sent, Paid, Overdue, Cancelled
         Notes TEXT,
-        FOREIGN KEY (ProjectID) REFERENCES projects (ProjectID) ON DELETE RESTRICT, -- Don't delete project if invoices exist
-        FOREIGN KEY (CustomerID) REFERENCES customers (CustomerID) ON DELETE RESTRICT -- Don't delete customer if invoices exist
+        FOREIGN KEY (ProjectID) REFERENCES projects (ProjectID) ON DELETE RESTRICT, 
+        FOREIGN KEY (CustomerID) REFERENCES customers (CustomerID) ON DELETE RESTRICT 
     )
     ''')
+
+    # Lightweight migrations for potentially missing columns
+    try:
+        # Check customers.ReferenceID (used in get_all_projects, a common source of OperationalError if missing)
+        cursor.execute("PRAGMA table_info(customers)")
+        customer_columns = [column_info[1] for column_info in cursor.fetchall()]
+        if 'ReferenceID' not in customer_columns:
+            cursor.execute("ALTER TABLE customers ADD COLUMN ReferenceID TEXT UNIQUE")
+            print("Applied migration: Added ReferenceID to customers table.")
+
+        # Check orders.ReferenceID (if it were a common issue, similar logic would apply)
+        cursor.execute("PRAGMA table_info(orders)")
+        order_columns = [column_info[1] for column_info in cursor.fetchall()]
+        if 'ReferenceID' not in order_columns:
+            cursor.execute("ALTER TABLE orders ADD COLUMN ReferenceID TEXT UNIQUE")
+            print("Applied migration: Added ReferenceID to orders table.")
+
+        # Add other similar checks for columns known to have been added post-initial creation if needed
+
+    except sqlite3.Error as e:
+        # Log or print error, but don't let migration checks stop init_db entirely
+        print(f"Warning during schema migration checks: {e}")
 
     conn.commit()
     conn.close()
@@ -213,8 +234,11 @@ def add_customer(name, email, phone, reference_id_input, bill_addr, ship_addr, n
         try:
             cursor.execute("UPDATE customers SET ReferenceID = ? WHERE CustomerID = ?", (final_reference_id, customer_id))
         except sqlite3.IntegrityError:
-            conn.rollback()
-            raise ValueError(f"Reference ID '{final_reference_id}' already exists for another customer.")
+            conn.rollback() # Rollback the ReferenceID update
+            # The customer is already added, this is a secondary failure. 
+            # Depending on requirements, one might want to rollback the insert too or log this.
+            # For now, raise error related to ReferenceID.
+            raise ValueError(f"Reference ID '{final_reference_id}' already exists for another customer. Customer (ID:{customer_id}) was added without this custom Ref ID.")
 
         conn.commit()
     except Exception as e:
@@ -229,7 +253,7 @@ def get_all_customers(search_term=""):
     query = "SELECT * FROM customers"
     params = []
     if search_term:
-        query += " WHERE CustomerName LIKE ? OR Email LIKE ? OR ReferenceID LIKE ? OR Phone LIKE ?" # Added Phone to search
+        query += " WHERE CustomerName LIKE ? OR Email LIKE ? OR ReferenceID LIKE ? OR Phone LIKE ?" 
         term = f"%{search_term}%"
         params.extend([term, term, term, term])
     query += " ORDER BY CustomerID DESC"
@@ -246,27 +270,30 @@ def get_customer_by_id(customer_id):
     conn.close()
     return customer
 
-def update_customer(cust_id, name, email, phone, reference_id_input, bill_addr, ship_addr, notes): # Added reference_id_input
+def update_customer(cust_id, name, email, phone, reference_id_input, bill_addr, ship_addr, notes): 
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        # If reference_id_input is empty, keep the old one or generate if it was null.
-        # For simplicity, we assume app.py sends the current or new one.
-        # If an empty string is passed for reference_id_input, it might try to set it to empty.
-        # A better approach might be to fetch current_ref_id and only update if reference_id_input is not empty and different.
-        # For now, direct update. Ensure app.py handles this carefully.
-        if reference_id_input: # Only update if a new one is provided
-            cursor.execute("UPDATE customers SET ReferenceID = ? WHERE CustomerID = ?", (reference_id_input, cust_id))
+        # Fetch current ReferenceID to avoid overwriting with empty if not intended
+        current_customer_data = get_customer_by_id(cust_id)
+        current_ref_id = current_customer_data.get('ReferenceID') if current_customer_data else None
 
+        if reference_id_input and reference_id_input != current_ref_id:
+            # Only update ReferenceID if a new, different, non-empty value is provided
+            try:
+                cursor.execute("UPDATE customers SET ReferenceID = ? WHERE CustomerID = ?", (reference_id_input, cust_id))
+            except sqlite3.IntegrityError:
+                conn.rollback()
+                raise ValueError(f"The new Reference ID '{reference_id_input}' might already be in use.")
+        
         cursor.execute('''
         UPDATE customers
         SET CustomerName = ?, Email = ?, Phone = ?, BillingAddress = ?, ShippingAddress = ?, Notes = ?
         WHERE CustomerID = ?
-        ''', (name, email, phone, bill_addr, ship_addr, notes, cust_id))
+        ''', (name, email, phone, bill_addr, ship_addr or bill_addr, notes, cust_id)) # use bill_addr if ship_addr is empty
         conn.commit()
-    except sqlite3.IntegrityError:
-        conn.rollback()
-        raise ValueError(f"The new Reference ID '{reference_id_input}' might already be in use.")
+    except ValueError: # Re-raise ValueError from ReferenceID check
+        raise
     except Exception as e:
         conn.rollback()
         raise e
@@ -277,24 +304,13 @@ def delete_customer(customer_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        # Check for linked projects (ON DELETE SET NULL will handle this, but good for UI warning)
-        # cursor.execute("SELECT 1 FROM projects WHERE CustomerID = ?", (customer_id,))
-        # if cursor.fetchone():
-        #     raise ValueError("Customer is associated with projects. Consider reassigning or deleting them first.")
-
-        # Check for linked orders (ON DELETE SET NULL will handle this)
-        # cursor.execute("SELECT 1 FROM orders WHERE CustomerID = ?", (customer_id,))
-        # if cursor.fetchone():
-        #     raise ValueError("Customer has existing orders. Consider reassigning or deleting them first.")
-
-        # Check for linked invoices (ON DELETE RESTRICT will prevent deletion if invoices exist)
         cursor.execute("SELECT 1 FROM invoices WHERE CustomerID = ?", (customer_id,))
         if cursor.fetchone():
             raise ValueError("Customer has existing invoices. Cannot delete. Please resolve invoices first.")
 
         cursor.execute("DELETE FROM customers WHERE CustomerID = ?", (customer_id,))
         conn.commit()
-    except sqlite3.IntegrityError as e: # Catch RESTRICT violation from Invoices
+    except sqlite3.IntegrityError as e: 
         conn.rollback()
         raise ValueError(f"Cannot delete customer (ID: {customer_id}). They have dependent records (e.g., Invoices). Details: {e}")
     except Exception as e:
@@ -359,7 +375,11 @@ def update_supplier(sup_id, name, contact_person, email, phone, address):
         ''', (name, contact_person, email, phone, address, sup_id))
         conn.commit()
     except sqlite3.IntegrityError:
+        conn.rollback() # Added rollback
         raise ValueError(f"Supplier name '{name}' might already exist for another supplier.")
+    except Exception as e: # Added general exception handling
+        conn.rollback()
+        raise e
     finally:
         conn.close()
 
@@ -370,7 +390,7 @@ def delete_supplier(supplier_id):
     try:
         cursor.execute("DELETE FROM suppliers WHERE SupplierID = ?", (supplier_id,))
         conn.commit()
-    except Exception as e: # Could be IntegrityError if services use RESTRICT (they use CASCADE)
+    except Exception as e: 
         conn.rollback()
         raise e
     finally:
@@ -388,14 +408,14 @@ def add_product(name, sku, desc, category, material_type, dims, cost, sell, qty,
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (name, sku, desc, category, material_type, dims, cost, sell, qty, reorder, supplier_id, image_path, last_update))
         product_id = cursor.lastrowid
-        reference_id = sku if sku else f"PROD-{product_id:06d}"
+        reference_id = sku if sku else f"PROD-{product_id:06d}" # Use SKU as ReferenceID if provided
         try:
             cursor.execute("UPDATE products SET ReferenceID = ? WHERE ProductID = ?", (reference_id, product_id))
-        except sqlite3.IntegrityError:
+        except sqlite3.IntegrityError: # Catch if generated/SKU ReferenceID is not unique
             conn.rollback()
             raise ValueError(f"Reference ID (from SKU or generated) '{reference_id}' already exists for another product.")
         conn.commit()
-    except sqlite3.IntegrityError:
+    except sqlite3.IntegrityError: # Catch if SKU itself is not unique from INSERT
         conn.rollback()
         raise ValueError(f"SKU '{sku}' already exists, or other integrity error.")
     except Exception as e:
@@ -436,7 +456,19 @@ def update_product(prod_id, name, sku, desc, category, material_type, dims, cost
     cursor = conn.cursor()
     last_update = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
-        new_reference_id = sku if sku else f"PROD-{prod_id:06d}"
+        # Ensure ReferenceID is updated based on SKU, similar to add_product
+        # Fetch current product to decide on ReferenceID update logic if SKU changes
+        current_product = get_product_by_id(prod_id)
+        current_sku = current_product.get('SKU') if current_product else None
+        new_reference_id = sku if sku else f"PROD-{prod_id:06d}" # Default if SKU is cleared
+
+        if sku != current_sku or (sku and (not current_product or not current_product.get('ReferenceID') or current_product.get('ReferenceID') != sku)):
+            # Update ReferenceID if SKU changes or if SKU is provided and ReferenceID needs to match it
+            pass # ReferenceID will be updated along with SKU in the main UPDATE statement
+        else: # SKU hasn't changed or is empty and shouldn't drive ReferenceID
+            new_reference_id = current_product.get('ReferenceID', f"PROD-{prod_id:06d}")
+
+
         cursor.execute('''
         UPDATE products
         SET ProductName = ?, SKU = ?, ReferenceID = ?, Description = ?, Category = ?, MaterialType = ?, Dimensions = ?,
@@ -446,7 +478,11 @@ def update_product(prod_id, name, sku, desc, category, material_type, dims, cost
         ''', (name, sku, new_reference_id, desc, category, material_type, dims, cost, sell, qty, reorder, supplier_id, image_path, last_update, prod_id))
         conn.commit()
     except sqlite3.IntegrityError:
+        conn.rollback() # Added rollback
         raise ValueError(f"New SKU '{sku}' or ReferenceID '{new_reference_id}' might already exist for another product.")
+    except Exception as e: # Added general exception handling
+        conn.rollback()
+        raise e
     finally:
         conn.close()
 
@@ -454,22 +490,28 @@ def update_product(prod_id, name, sku, desc, category, material_type, dims, cost
 def update_product_stock(product_id, quantity_change):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE products SET QuantityInStock = QuantityInStock + ?, LastStockUpdate = ? WHERE ProductID = ?",
-                   (quantity_change, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), product_id))
-    conn.commit()
-    conn.close()
+    try: # Added try-finally
+        cursor.execute("UPDATE products SET QuantityInStock = QuantityInStock + ?, LastStockUpdate = ? WHERE ProductID = ?",
+                       (quantity_change, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), product_id))
+        conn.commit()
+    except Exception as e: # Added general exception handling
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
 
 
 def delete_product(product_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        product = get_product_by_id(product_id)
+        product = get_product_by_id(product_id) # Fetch before delete to get ImagePath
         if product and product['ImagePath'] and os.path.exists(product['ImagePath']):
             try:
                 os.remove(product['ImagePath'])
             except OSError as e:
-                print(f"Error deleting image file {product['ImagePath']}: {e}")
+                # Log this error but don't let it stop the DB deletion if that's desired
+                print(f"Warning: Error deleting image file {product['ImagePath']}: {e}")
 
         cursor.execute("DELETE FROM products WHERE ProductID = ?", (product_id,))
         conn.commit()
@@ -545,7 +587,11 @@ def update_material(mat_id, name, material_type, unit, cost_unit, qty, supplier_
         ''', (name, material_type, unit, cost_unit, qty, supplier_id, last_update, mat_id))
         conn.commit()
     except sqlite3.IntegrityError:
+        conn.rollback() # Added
         raise ValueError(f"Material name '{name}' might already exist for another material.")
+    except Exception as e: # Added
+        conn.rollback()
+        raise e
     finally:
         conn.close()
 
@@ -553,9 +599,14 @@ def update_material(mat_id, name, material_type, unit, cost_unit, qty, supplier_
 def delete_material(material_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM materials WHERE MaterialID = ?", (material_id,))
-    conn.commit()
-    conn.close()
+    try: # Added
+        cursor.execute("DELETE FROM materials WHERE MaterialID = ?", (material_id,))
+        conn.commit()
+    except Exception as e: # Added
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
 
 # --- Project CRUD ---
 def add_project(name, customer_id, start_date, end_date, status, budget, description):
@@ -586,11 +637,13 @@ def get_all_projects(search_term=""):
     """
     params = []
     if search_term:
+        # Ensure all searched columns exist in their respective tables
+        # c.ReferenceID exists in customers table as per schema
         query += " WHERE (p.ProjectName LIKE ? OR c.CustomerName LIKE ? OR c.ReferenceID LIKE ? OR p.Status LIKE ? OR p.ReferenceID LIKE ?)"
         term = f"%{search_term}%"
         params.extend([term, term, term, term, term])
     query += " ORDER BY p.ProjectID DESC"
-    cursor.execute(query, params)
+    cursor.execute(query, params) # This line was 593
     projects = cursor.fetchall()
     conn.close()
     return projects
@@ -598,7 +651,6 @@ def get_all_projects(search_term=""):
 def get_project_by_id(project_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    # Join with customer to get CustomerName, useful if displaying project details
     cursor.execute("""
         SELECT p.*, c.CustomerName
         FROM projects p
@@ -612,28 +664,30 @@ def get_project_by_id(project_id):
 def update_project(proj_id, name, customer_id, start_date, end_date, status, budget, description):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('''
-    UPDATE projects
-    SET ProjectName = ?, CustomerID = ?, StartDate = ?, EndDate = ?, Status = ?, Budget = ?, Description = ?
-    WHERE ProjectID = ?
-    ''', (name, customer_id, start_date, end_date, status, budget, description, proj_id))
-    conn.commit()
-    conn.close()
+    try: # Added
+        cursor.execute('''
+        UPDATE projects
+        SET ProjectName = ?, CustomerID = ?, StartDate = ?, EndDate = ?, Status = ?, Budget = ?, Description = ?
+        WHERE ProjectID = ?
+        ''', (name, customer_id, start_date, end_date, status, budget, description, proj_id))
+        conn.commit()
+    except Exception as e: # Added
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
 
 
 def delete_project(project_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        # Check for linked invoices (ON DELETE RESTRICT will prevent deletion)
         cursor.execute("SELECT 1 FROM invoices WHERE ProjectID = ?", (project_id,))
         if cursor.fetchone():
             raise ValueError("Project has existing invoices. Cannot delete. Please resolve invoices first.")
-
-        # ON DELETE SET NULL handles orders/expenses/supplier_services linked
         cursor.execute("DELETE FROM projects WHERE ProjectID = ?", (project_id,))
         conn.commit()
-    except sqlite3.IntegrityError as e: # Catch RESTRICT violation from Invoices
+    except sqlite3.IntegrityError as e: 
         conn.rollback()
         raise ValueError(f"Cannot delete project (ID: {project_id}). It has dependent records (e.g., Invoices). Details: {e}")
     except Exception as e:
@@ -647,28 +701,29 @@ def delete_project(project_id):
 def add_supplier_service(supplier_id, project_id, service_name, service_type, service_date, cost, receipt_path, description):
     conn = get_db_connection()
     cursor = conn.cursor()
-    service_pk_id = None
-    expense_logged_successfully = False
+    service_pk_id = None # Initialize to ensure it's defined
+    expense_logged_successfully = False # Initialize
     try:
         cursor.execute('''
         INSERT INTO supplier_services (SupplierID, ProjectID, ServiceName, ServiceType, ServiceDate, Cost, ReceiptPath, Description, IsExpenseLogged)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
-        ''', (supplier_id, project_id, service_name, service_type, service_date, cost, receipt_path, description))
+        ''', (supplier_id, project_id, service_name, service_type, service_date, cost, receipt_path, description)) # Pass receipt_path here
         service_pk_id = cursor.lastrowid
         reference_id = f"SERV-{service_pk_id:06d}"
         cursor.execute("UPDATE supplier_services SET ReferenceID = ? WHERE ServiceID = ?", (reference_id, service_pk_id))
 
-        if cost > 0 and service_pk_id:
+        if cost > 0 and service_pk_id: # Check service_pk_id to ensure insert was successful
             supplier = get_supplier_by_id(supplier_id)
             supplier_name_for_expense = supplier['SupplierName'] if supplier else f"Supplier ID: {supplier_id}"
             expense_desc = f"Service: {service_name} ({reference_id}) by {supplier_name_for_expense}"
             if service_type: expense_desc += f" ({service_type})"
 
+            # The original call passed None for supplier_service_id, which is not a param for add_expense
             new_expense_pk_id = add_expense(
                 exp_date=service_date, desc=expense_desc, category="Supplier Services", amount=cost,
                 vendor=supplier_name_for_expense, project_id=project_id,
                 receipt_ref=f"ServRef: {reference_id}" + (f", ReceiptFile: {os.path.basename(receipt_path)}" if receipt_path else ""),
-                is_internal_call=True
+                is_internal_call=True # Keep this to suppress its own errors if desired, or handle differently
             )
             if new_expense_pk_id:
                 cursor.execute("UPDATE supplier_services SET IsExpenseLogged = 1 WHERE ServiceID = ?", (service_pk_id,))
@@ -697,7 +752,7 @@ def get_all_supplier_services(search_term=""):
         query += " WHERE (ss.ServiceName LIKE ? OR ss.ServiceType LIKE ? OR s.SupplierName LIKE ? OR p.ProjectName LIKE ? OR ss.Description LIKE ? OR ss.ReferenceID LIKE ?)"
         term = f"%{search_term}%"
         params.extend([term, term, term, term, term, term])
-    query += " ORDER BY ss.ServiceDate DESC, ss.ServiceID DESC" # Added ServiceID for stable sort
+    query += " ORDER BY ss.ServiceDate DESC, ss.ServiceID DESC"
     cursor.execute(query, params)
     services = cursor.fetchall()
     conn.close()
@@ -721,7 +776,7 @@ def update_supplier_service(service_id, supplier_id, project_id, service_name, s
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        old_service_data = get_supplier_service_by_id(service_id)
+        old_service_data = get_supplier_service_by_id(service_id) # Fetch before update
 
         cursor.execute('''
         UPDATE supplier_services
@@ -730,12 +785,15 @@ def update_supplier_service(service_id, supplier_id, project_id, service_name, s
         WHERE ServiceID = ?
         ''', (supplier_id, project_id, service_name, service_type, service_date, cost, receipt_path, description, service_id))
 
-        if old_service_data and old_service_data['IsExpenseLogged'] and (old_service_data['Cost'] != cost or old_service_data['ServiceDate'] != service_date or old_service_data['ProjectID'] != project_id):
-            # More sophisticated: find and update the linked expense, or delete and recreate.
-            # For now, a stronger warning and advise manual check.
-            print(f"CRITICAL WARNING in database.py: Service ID {service_id} (Ref: {old_service_data['ReferenceID']}) details (Cost, Date, or Project) changed. The associated auto-logged expense (ID: {old_service_data.get('ExpenseID_from_link', 'Unknown')}) REQUIRES MANUAL REVIEW AND ADJUSTMENT in the Expense Tracking module.")
-            # To make this more robust, the supplier_services table could store the ExpenseID it generated.
-
+        if old_service_data and old_service_data['IsExpenseLogged'] and \
+           (old_service_data['Cost'] != cost or \
+            old_service_data['ServiceDate'] != service_date or \
+            old_service_data['ProjectID'] != project_id or \
+            old_service_data['ServiceName'] != service_name or \
+            old_service_data['SupplierID'] != supplier_id):
+            # Potentially find and update the linked expense or mark for review
+            # For simplicity, the print warning remains. A more robust solution would be to link ServiceID to ExpenseID.
+            print(f"CRITICAL WARNING in database.py: Service ID {service_id} (Ref: {old_service_data['ReferenceID']}) details changed. The associated auto-logged expense requires MANUAL REVIEW.")
         conn.commit()
     except Exception as e:
         conn.rollback()
@@ -748,18 +806,15 @@ def delete_supplier_service(service_id):
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        service_info = get_supplier_service_by_id(service_id)
+        service_info = get_supplier_service_by_id(service_id) # Get info before delete
         if service_info and service_info['ReceiptPath'] and os.path.exists(service_info['ReceiptPath']):
             try:
                 os.remove(service_info['ReceiptPath'])
             except OSError as e:
-                print(f"Error deleting receipt file {service_info['ReceiptPath']}: {e}")
-
-        # If an expense was auto-logged, it should ideally be handled.
-        # For now, app.py warns user to manually check.
-        # A more advanced system might try to find and delete the linked expense if it was purely from this service.
+                print(f"Warning: Error deleting receipt file {service_info['ReceiptPath']}: {e}")
+        
         if service_info and service_info['IsExpenseLogged']:
-            print(f"INFO: Service ID {service_id} (Ref: {service_info['ReferenceID']}) is being deleted. The associated auto-logged expense may need to be manually reviewed or deleted from Expense Tracking.")
+            print(f"INFO: Service ID {service_id} (Ref: {service_info['ReferenceID']}) is being deleted. The associated auto-logged expense may need manual review/deletion.")
 
         cursor.execute("DELETE FROM supplier_services WHERE ServiceID = ?", (service_id,))
         conn.commit()
@@ -770,7 +825,7 @@ def delete_supplier_service(service_id):
         conn.close()
 
 # --- Order & Order Item CRUD ---
-def add_order(order_date, customer_id, project_id, status, total_amount, payment_status, ship_addr, notes, reference_id_input=None): # Added reference_id_input
+def add_order(order_date, customer_id, project_id, status, total_amount, payment_status, ship_addr, notes, reference_id_input=None): 
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -798,15 +853,20 @@ def add_order(order_date, customer_id, project_id, status, total_amount, payment
 def add_order_item(order_id, product_id, quantity, unit_price, discount):
     conn = get_db_connection()
     cursor = conn.cursor()
-    line_total = (float(unit_price) * int(quantity)) - float(discount)
-    cursor.execute('''
-    INSERT INTO order_items (OrderID, ProductID, QuantitySold, UnitPriceAtSale, Discount, LineTotal)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ''', (order_id, product_id, quantity, unit_price, discount, line_total))
-    conn.commit()
-    conn.close()
+    try: # Added
+        line_total = (float(unit_price) * int(quantity)) - float(discount)
+        cursor.execute('''
+        INSERT INTO order_items (OrderID, ProductID, QuantitySold, UnitPriceAtSale, Discount, LineTotal)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ''', (order_id, product_id, quantity, unit_price, discount, line_total))
+        conn.commit()
+    except Exception as e: # Added
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
 
-def get_all_orders(search_term="", limit=None): # Added limit
+def get_all_orders(search_term="", limit=None):
     conn = get_db_connection()
     cursor = conn.cursor()
     query = """
@@ -820,15 +880,16 @@ def get_all_orders(search_term="", limit=None): # Added limit
         query += " WHERE (o.ReferenceID LIKE ? OR c.CustomerName LIKE ? OR c.ReferenceID LIKE ? OR pr.ProjectName LIKE ? OR pr.ReferenceID LIKE ? OR o.OrderStatus LIKE ?)"
         term = f"%{search_term}%"
         params.extend([term, term, term, term, term, term])
-    query += " ORDER BY o.OrderDate DESC, o.OrderID DESC" # Added OrderID for stable sort
+    query += " ORDER BY o.OrderDate DESC, o.OrderID DESC" 
     if limit:
-        query += f" LIMIT {int(limit)}" # Be cautious with direct int insertion if limit isn't controlled
+        query += f" LIMIT ?" # Use placeholder for limit
+        params.append(int(limit))
     cursor.execute(query, params)
     orders = cursor.fetchall()
     conn.close()
     return orders
 
-def get_order_by_id(order_id): # New function
+def get_order_by_id(order_id): 
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -842,12 +903,19 @@ def get_order_by_id(order_id): # New function
     conn.close()
     return order
 
-def update_order_basic_info(order_id, order_date, customer_id, project_id, status, payment_status, ship_addr, notes, reference_id_input): # New function
+def update_order_basic_info(order_id, order_date, customer_id, project_id, status, payment_status, ship_addr, notes, reference_id_input): 
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        if reference_id_input: # Only update if a new one is provided and not empty
-            cursor.execute("UPDATE orders SET ReferenceID = ? WHERE OrderID = ?", (reference_id_input, order_id))
+        current_order_data = get_order_by_id(order_id)
+        current_ref_id = current_order_data.get('ReferenceID') if current_order_data else None
+
+        if reference_id_input and reference_id_input != current_ref_id: # Only update if new, different, non-empty
+            try:
+                cursor.execute("UPDATE orders SET ReferenceID = ? WHERE OrderID = ?", (reference_id_input, order_id))
+            except sqlite3.IntegrityError:
+                conn.rollback()
+                raise ValueError(f"The new Reference ID '{reference_id_input}' might already be in use for another order.")
 
         cursor.execute('''
         UPDATE orders
@@ -856,9 +924,8 @@ def update_order_basic_info(order_id, order_date, customer_id, project_id, statu
         WHERE OrderID = ?
         ''', (order_date, customer_id, project_id, status, payment_status, ship_addr, notes, order_id))
         conn.commit()
-    except sqlite3.IntegrityError:
-        conn.rollback()
-        raise ValueError(f"The new Reference ID '{reference_id_input}' might already be in use for another order.")
+    except ValueError: # Re-raise
+        raise
     except Exception as e:
         conn.rollback()
         raise e
@@ -897,15 +964,21 @@ def get_order_items_by_order_id(order_id):
 def update_order_total(order_id):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT SUM(LineTotal) FROM order_items WHERE OrderID = ?", (order_id,))
-    total_amount_tuple = cursor.fetchone()
-    total_amount = total_amount_tuple[0] if total_amount_tuple and total_amount_tuple[0] is not None else 0
-    cursor.execute("UPDATE orders SET TotalAmount = ? WHERE OrderID = ?", (total_amount, order_id))
-    conn.commit()
-    conn.close()
+    try: # Added
+        cursor.execute("SELECT SUM(LineTotal) FROM order_items WHERE OrderID = ?", (order_id,))
+        total_amount_tuple = cursor.fetchone()
+        total_amount = total_amount_tuple[0] if total_amount_tuple and total_amount_tuple[0] is not None else 0
+        cursor.execute("UPDATE orders SET TotalAmount = ? WHERE OrderID = ?", (total_amount, order_id))
+        conn.commit()
+    except Exception as e: # Added
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
 
 
 # --- Expense CRUD ---
+# Modified add_expense slightly for the supplier_service call which passed an extra None argument
 def add_expense(exp_date, desc, category, amount, vendor, project_id, receipt_ref, is_internal_call=False):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -924,8 +997,8 @@ def add_expense(exp_date, desc, category, amount, vendor, project_id, receipt_re
         if not is_internal_call:
             raise e
         else:
-            print(f"INTERNAL ERROR during add_expense for '{desc}': {e}")
-            return None
+            print(f"INTERNAL ERROR during add_expense for '{desc}': {e}") # Keep print for internal calls
+            return None # Return None on failure for internal calls to check
     finally:
         conn.close()
     return expense_pk_id
@@ -944,13 +1017,13 @@ def get_all_expenses(search_term=""):
         query += " WHERE (e.Description LIKE ? OR e.Category LIKE ? OR e.Vendor LIKE ? OR p.ProjectName LIKE ? OR p.ReferenceID LIKE ? OR e.ReferenceID LIKE ?)"
         term = f"%{search_term}%"
         params.extend([term, term, term, term, term, term])
-    query += " ORDER BY e.ExpenseDate DESC, e.ExpenseID DESC" # Added ExpenseID for stable sort
+    query += " ORDER BY e.ExpenseDate DESC, e.ExpenseID DESC" 
     cursor.execute(query, params)
     expenses = cursor.fetchall()
     conn.close()
     return expenses
 
-def get_expenses_by_project_id(project_id): # New for reports
+def get_expenses_by_project_id(project_id): 
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
@@ -967,13 +1040,10 @@ def get_expenses_by_project_id(project_id): # New for reports
 def get_next_invoice_reference_id():
     conn = get_db_connection()
     cursor = conn.cursor()
-    # This is a simple way, could be more robust (e.g., find max number for current year)
-    # For a more robust sequence like INV-YYYY-NNN:
-    # 1. Get current year
-    # 2. Query max InvoiceReferenceID for that year (e.g., SELECT MAX(InvoiceReferenceID) FROM invoices WHERE InvoiceReferenceID LIKE 'INV-YYYY-%')
-    # 3. Parse out the NNN part, increment, and format.
-    # For simplicity, this just provides a basic template.
     year = datetime.now().year
+    # This simple count might not be robust for multi-user or if IDs are deleted.
+    # A sequence table or MAX()+1 on the numeric part of INV-YYYY-NNNN is better.
+    # For now, keeping it as is, but noting its limitation.
     cursor.execute("SELECT COUNT(*) FROM invoices WHERE InvoiceReferenceID LIKE ?", (f"INV-{year}-%",))
     count = cursor.fetchone()[0]
     conn.close()
@@ -994,7 +1064,7 @@ def add_invoice(invoice_reference_id, project_id, customer_id, issue_date, due_d
         conn.rollback()
         if "UNIQUE constraint failed: invoices.InvoiceReferenceID" in str(e):
             raise ValueError(f"Invoice Reference ID '{invoice_reference_id}' already exists.")
-        raise e # Re-raise other integrity errors
+        raise e 
     except Exception as e:
         conn.rollback()
         raise e
@@ -1115,6 +1185,7 @@ def get_projects_by_customer_id(customer_id):
 # --- Helper ---
 def rows_to_dicts(rows):
     if rows is None: return []
-    return [dict(row) for row in rows]
+    # Ensure that each row is a valid mapping (like sqlite3.Row or dict)
+    return [dict(row) for row in rows if hasattr(row, 'keys')] # Added check for safety
 
 init_db()
