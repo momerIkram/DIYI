@@ -233,7 +233,7 @@ elif choice == "Customer Management":
                                         try:
                                             db.update_customer(cust_id_to_edit, name, email, phone, new_reference_id, bill_addr, ship_addr, notes)
                                             st.success("Customer updated successfully!")
-                                            st.experimental_rerun()
+                                            st.rerun()
                                         except Exception as e: st.error(f"Error: {e}")
                         else:
                             st.error("Failed to load customer data for editing.")
@@ -258,7 +258,7 @@ elif choice == "Customer Management":
                             db.delete_customer(cust_id_to_del)
                             st.success(f"Customer {selected_cust_disp_del} deleted successfully!")
                             st.session_state.selected_customer_id_for_detail_view = None # Clear if deleted
-                            st.experimental_rerun()
+                            st.rerun()
                         except Exception as e:
                             st.error(f"Error deleting customer: {e}")
 
@@ -266,7 +266,7 @@ elif choice == "Customer Management":
         if st.button("⬅️ Back to Customer List"):
             st.session_state.customer_management_action_view = "List"
             st.session_state.selected_customer_id_for_detail_view = None
-            st.experimental_rerun()
+            st.rerun()
 
         st.subheader("View Customer Details")
         if st.session_state.selected_customer_id_for_detail_view:
@@ -345,7 +345,7 @@ elif choice == "Customer Management":
                     st.warning("Could not process customer data. The customer may have been deleted or data is malformed.")
                     st.session_state.customer_management_action_view = "List"
                     st.session_state.selected_customer_id_for_detail_view = None
-                    st.experimental_rerun() # Go back to list
+                    st.rerun() # Go back to list
             else:
                 st.warning("Could not fetch customer data (customer might be deleted).")
                 st.session_state.customer_management_action_view = "List"
@@ -354,7 +354,7 @@ elif choice == "Customer Management":
         else:
             st.info("No customer selected for details. Please select one from the list.")
             st.session_state.customer_management_action_view = "List" # Go back to list
-            st.experimental_rerun()
+            st.rerun()
 
 
 elif choice == "Supplier Management":
@@ -415,7 +415,7 @@ elif choice == "Supplier Management":
                                 try:
                                     db.update_supplier(sup_id_to_edit, s_name, s_contact, s_email, s_phone, s_address)
                                     st.success("Supplier updated!")
-                                    st.experimental_rerun()
+                                    st.rerun()
                                 except Exception as e: st.error(f"Error: {e}")
                 else:
                     st.error(f"Could not load data for supplier ID {sup_id_to_edit}")
@@ -436,7 +436,7 @@ elif choice == "Supplier Management":
                     try:
                         db.delete_supplier(sup_id_to_del)
                         st.success(f"Supplier {selected_sup_disp_del} deleted!")
-                        st.experimental_rerun()
+                        st.rerun()
                     except Exception as e: st.error(f"Error deleting supplier: {e}")
 
 # ... (The rest of your file: Supplier Services, Material, Product, Project, Sales, Invoice, Expense, Reports) ...
@@ -653,7 +653,7 @@ elif choice == "Supplier Services":
                                         receipt_path_to_save, ss_description_edit, ss_is_expense_logged_edit # Pass IsExpenseLogged
                                     )
                                     st.success("Service updated! Note: If cost or critical details changed, associated expense may need manual review/adjustment if it was auto-logged.")
-                                    st.experimental_rerun()
+                                    st.rerun()
                                 except Exception as e: st.error(f"Error updating service: {e}")
                 else:
                     st.error(f"Could not load data for service ID {service_id_to_edit}")
@@ -673,7 +673,7 @@ elif choice == "Supplier Services":
                     try:
                         db.delete_supplier_service(service_id_to_del) # This function in db.py should handle receipt deletion.
                         st.success("Service deleted successfully!")
-                        st.experimental_rerun()
+                        st.rerun()
                     except Exception as e: st.error(f"Error deleting service: {e}")
 # ... (Rest of the code: Material Management, Product Management, etc.)
 # Apply db.rows_to_dicts pattern for lists and dict conversion for single items from db
@@ -749,7 +749,7 @@ elif choice == "Material Management":
                                 try:
                                     db.update_material(mat_id_to_edit, m_name, m_type, m_unit, m_cost_unit, m_qty, m_supplier_id_edit)
                                     st.success("Material updated!")
-                                    st.experimental_rerun()
+                                    st.rerun()
                                 except Exception as e: st.error(f"Error: {e}")
                 else:
                     st.error(f"Could not load data for material ID {mat_id_to_edit}")
@@ -769,7 +769,7 @@ elif choice == "Material Management":
                     try:
                         db.delete_material(mat_id_to_del)
                         st.success(f"Material {selected_mat_disp_del} deleted!")
-                        st.experimental_rerun()
+                        st.rerun()
                     except Exception as e: st.error(f"Error deleting material: {e}")
 
 elif choice == "Product Management":
@@ -849,7 +849,7 @@ elif choice == "Product Management":
                     try:
                         db.add_product(p_name, p_sku, p_desc, p_cat, p_mat_type_prod, p_dims, p_cost, p_sell, p_qty, p_reorder, p_supplier_id_add, p_image_path_add)
                         st.success(f"Product '{p_name}' added!")
-                        st.experimental_rerun() # To clear form and refresh list potentially
+                        st.rerun() # To clear form and refresh list potentially
                     except Exception as e_add_prod:
                         st.error(f"Error adding product: {e_add_prod}")
                         if p_image_path_add and os.path.exists(p_image_path_add): 
@@ -932,7 +932,7 @@ elif choice == "Product Management":
                                 try:
                                     db.update_product(prod_id_to_edit_main, p_name_edit, p_sku_edit, p_desc_edit, p_cat_edit, p_mat_type_prod_edit, p_dims_edit, p_cost_edit, p_sell_edit, p_qty_edit, p_reorder_edit, p_supplier_id_edit, image_path_to_save_edit)
                                     st.success("Product updated!")
-                                    st.experimental_rerun()
+                                    st.rerun()
                                 except Exception as e_upd_prod: 
                                     st.error(f"Error updating: {e_upd_prod}")
                 else:
@@ -955,7 +955,7 @@ elif choice == "Product Management":
                         # db.delete_product should also handle deleting the associated image file.
                         db.delete_product(prod_id_to_del_main) 
                         st.success("Product deleted successfully!")
-                        st.experimental_rerun()
+                        st.rerun()
                     except Exception as e_del_prod_main: 
                         st.error(f"Error deleting product: {e_del_prod_main}")
 
@@ -1067,7 +1067,7 @@ elif choice == "Project Management":
                                                       pr_end_date_edit.strftime("%Y-%m-%d") if pr_end_date_edit else None, 
                                                       pr_status_edit, pr_budget_edit, pr_desc_edit)
                                     st.success("Project updated!")
-                                    st.experimental_rerun()
+                                    st.rerun()
                                 except Exception as e_proj_edit: 
                                     st.error(f"Error updating project: {e_proj_edit}")
                 else:
@@ -1089,7 +1089,7 @@ elif choice == "Project Management":
                     try:
                         db.delete_project(proj_id_to_del_main_page) 
                         st.success("Project deleted!")
-                        st.experimental_rerun()
+                       st.rerun()
                     except Exception as e_del_proj_main: 
                         st.error(f"Error deleting project: {e_del_proj_main}")
 
@@ -1205,7 +1205,7 @@ elif choice == "Sales Book (Orders)":
                             'Discount': discount_item_val_main, 
                             'LineTotal': (unit_price_item_override_main * qty_item_main) - discount_item_val_main
                         })
-                        st.experimental_rerun() # Rerun to update displayed items and total
+                        st.rerun() # Rerun to update displayed items and total
                     else:
                         st.error("Selected product details could not be fetched.")
                 else: 
@@ -1242,8 +1242,8 @@ elif choice == "Sales Book (Orders)":
                         db.update_order_total(new_order_id_main) # Recalculate and save total in DB
                         st.success(f"Order (ID: {new_order_id_main}) created successfully!")
                         st.session_state.current_order_items_main = [] # Clear items for next order
-                        # Consider st.experimental_rerun() to fully reset the form page
-                        st.experimental_rerun()
+                        # Consider st.rerun() to fully reset the form page
+                        st.rerun()
                     except Exception as e_ord_add: 
                         st.error(f"Error creating order: {e_ord_add}")
 
@@ -1323,7 +1323,7 @@ elif choice == "Sales Book (Orders)":
                                         o_shipping_address_edit, o_notes_edit, o_reference_id_edit
                                     )
                                     st.success(f"Order (ID: {order_id_to_edit}) basic info updated!")
-                                    st.experimental_rerun()
+                                    st.rerun()
                                 except Exception as e_ord_edit:
                                     st.error(f"Error updating order: {e_ord_edit}")
                 else:
@@ -1479,7 +1479,7 @@ elif choice == "Invoice Tracking":
                                         inv_amount_edit, inv_status_edit, inv_notes_edit
                                     )
                                     st.success(f"Invoice {inv_ref_id_edit} updated successfully!")
-                                    st.experimental_rerun()
+                                    st.rerun()
                                 except Exception as e:
                                     st.error(f"Error updating invoice: {e}")
                 else:
