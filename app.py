@@ -1392,14 +1392,14 @@ elif choice == "Invoice Tracking":
             inv_due_date = st.date_input("Due Date*", datetime.now().date() + timedelta(days=30))
             
             customer_id_for_inv = None
-            project_budget_for_inv = 0.0
+            project_budget_for_inv = 0.0 
             customer_name_display = "N/A"
             if inv_project_id:
                 project_data_row = db.get_project_by_id(inv_project_id)
                 project_data_inv = dict(project_data_row[0]) if isinstance(project_data_row, list) and project_data_row else dict(project_data_row) if project_data_row else None
                 if project_data_inv:
                     customer_id_for_inv = project_data_inv.get('CustomerID')
-                    project_budget_for_inv = float(project_data_inv.get('Budget', 0.0))
+                    project_budget_for_inv = float(project_data_inv.get('Budget', 0.0)) 
                     if customer_id_for_inv:
                         customer_details_row = db.get_customer_by_id(customer_id_for_inv)
                         customer_details_inv = dict(customer_details_row[0]) if isinstance(customer_details_row, list) and customer_details_row else dict(customer_details_row) if customer_details_row else None
@@ -1407,9 +1407,11 @@ elif choice == "Invoice Tracking":
                             customer_name_display = customer_details_inv.get('CustomerName', 'N/A')
             
             st.text_input("Customer (Auto-filled from Project)", value=customer_name_display, disabled=True)
-            inv_amount = st.number_input("Invoice Amount (Rs.)*", value=project_budget_for_inv, min_value=0.01, format="%.2f")
+            # Ensure value is >= min_value for st.number_input
+            inv_amount_default_value = max(project_budget_for_inv, 0.01) 
+            inv_amount = st.number_input("Invoice Amount (Rs.)*", value=inv_amount_default_value, min_value=0.01, format="%.2f")
             inv_status = st.selectbox("Status*", invoice_status_options, index=invoice_status_options.index("Draft") if "Draft" in invoice_status_options else 0)
-            inv_payment_date = st.date_input("Payment Date (if Paid)", value=None) # None for date_input makes it optional
+            inv_payment_date = st.date_input("Payment Date (if Paid)", value=None) 
             inv_notes = st.text_area("Notes / Invoice Line Items (Manual Entry)")
 
             submitted = st.form_submit_button("Create Invoice")
@@ -1468,7 +1470,8 @@ elif choice == "Invoice Tracking":
                         inv_issue_date_edit = st.date_input("Issue Date*", value=datetime.strptime(invoice_data['IssueDate'], "%Y-%m-%d").date() if invoice_data.get('IssueDate') else datetime.now().date())
                         inv_due_date_edit = st.date_input("Due Date*", value=datetime.strptime(invoice_data['DueDate'], "%Y-%m-%d").date() if invoice_data.get('DueDate') else datetime.now().date() + timedelta(days=30))
                         
-                        inv_amount_edit = st.number_input("Invoice Amount (Rs.)*", value=float(invoice_data.get('TotalAmount',0.0)), min_value=0.01, format="%.2f")
+                        inv_amount_edit_default_value = max(float(invoice_data.get('TotalAmount',0.0)), 0.01)
+                        inv_amount_edit = st.number_input("Invoice Amount (Rs.)*", value=inv_amount_edit_default_value, min_value=0.01, format="%.2f")
                         
                         current_status_index = invoice_status_options.index(invoice_data['Status']) if invoice_data.get('Status') in invoice_status_options else 0
                         inv_status_edit = st.selectbox("Status*", invoice_status_options, index=current_status_index)
@@ -1618,4 +1621,4 @@ elif choice == "Reports":
 
 
 st.sidebar.markdown("---")
-st.sidebar.info("Bachat-Management System")
+st.sidebar.info(" BACHAT - Management System ")
