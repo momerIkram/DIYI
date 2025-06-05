@@ -350,7 +350,7 @@ elif choice == "Customer Management":
                 st.warning("Could not fetch customer data (customer might be deleted).")
                 st.session_state.customer_management_action_view = "List"
                 st.session_state.selected_customer_id_for_detail_view = None
-                st.experimental_rerun() # Go back to list
+               st.rerun() # Go back to list
         else:
             st.info("No customer selected for details. Please select one from the list.")
             st.session_state.customer_management_action_view = "List" # Go back to list
