@@ -1,4 +1,3 @@
---- START OF FILE database (2).py ---
 
 import sqlite3
 import os
