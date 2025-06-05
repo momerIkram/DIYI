@@ -1089,7 +1089,7 @@ elif choice == "Project Management":
                     try:
                         db.delete_project(proj_id_to_del_main_page) 
                         st.success("Project deleted!")
-                       st.rerun()
+                        st.rerun()
                     except Exception as e_del_proj_main: 
                         st.error(f"Error deleting project: {e_del_proj_main}")
 
