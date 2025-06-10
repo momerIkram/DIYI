@@ -1,5 +1,3 @@
-
-
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
@@ -7,15 +5,22 @@ import os
 import database as db # Your database module
 from PIL import Image
 
+# --- Page Config - MUST BE THE FIRST STREAMLIT COMMAND ---
+st.set_page_config(layout="wide")
+# --------------------------------------------------------
+
 # --- Initialize Database Schema ---
 # Ensure this is called once at the start of your application
 try:
     db.init_db()
-    # You can add a success message to the sidebar or logs if you want confirmation
-    # st.sidebar.info("Database initialized.") # Optional
+    # If you want a success message for initialization, you can log it
+    # or display it later in the app, for example, in the sidebar.
+    # print("INFO: Database initialized successfully.") # For console logs
 except Exception as e:
+    # Now it's safe to use Streamlit commands for error display
     st.error(f"Fatal Error: Database could not be initialized: {e}")
     st.warning("The application cannot proceed without a valid database connection and schema.")
+    # Optionally, you could add a more user-friendly message or image here
     st.stop() # Stop the app if DB initialization fails
 # ---------------------------------
 
@@ -27,7 +32,6 @@ except Exception as e:
 #   Ensure Projects table has CustomerID
 #   create_project_materials_table() # NEW
 # --------------------------------------------------------------
-
 st.set_page_config(layout="wide")
 st.title("🛋️ DYI Furniture Management System")
 
