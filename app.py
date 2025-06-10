@@ -32,10 +32,6 @@ except Exception as e:
 #   Ensure Projects table has CustomerID
 #   create_project_materials_table() # NEW
 # --------------------------------------------------------------
-st.set_page_config(layout="wide")
-st.title("🛋️ DYI Furniture Management System")
-
-# ... (rest of your app.py code) ...
 
 st.set_page_config(layout="wide")
 st.title("🛋️ DYI Furniture Management System")
