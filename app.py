@@ -1,9 +1,23 @@
+
+
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 import os
 import database as db # Your database module
 from PIL import Image
+
+# --- Initialize Database Schema ---
+# Ensure this is called once at the start of your application
+try:
+    db.init_db()
+    # You can add a success message to the sidebar or logs if you want confirmation
+    # st.sidebar.info("Database initialized.") # Optional
+except Exception as e:
+    st.error(f"Fatal Error: Database could not be initialized: {e}")
+    st.warning("The application cannot proceed without a valid database connection and schema.")
+    st.stop() # Stop the app if DB initialization fails
+# ---------------------------------
 
 # --- db.py needs to ensure these tables and columns exist ---
 # Example: In db.init_db():
@@ -13,6 +27,11 @@ from PIL import Image
 #   Ensure Projects table has CustomerID
 #   create_project_materials_table() # NEW
 # --------------------------------------------------------------
+
+st.set_page_config(layout="wide")
+st.title("🛋️ DYI Furniture Management System")
+
+# ... (rest of your app.py code) ...
 
 st.set_page_config(layout="wide")
 st.title("🛋️ DYI Furniture Management System")
