@@ -1040,6 +1040,7 @@ def get_all_expenses(search_term=""):
     conn.close()
     return expenses
 
+# --- NEW FUNCTION ---
 def get_expenses_by_project_id(project_id):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -1047,6 +1048,7 @@ def get_expenses_by_project_id(project_id):
     expenses = cursor.fetchall()
     conn.close()
     return expenses
+# --- END NEW FUNCTION ---
 
 def rows_to_dicts(rows):
     if not rows:
