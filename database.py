@@ -1098,7 +1098,41 @@ def get_all_expenses(search_term=""): # Updated to join SupplierServices for ser
     expenses = cursor.fetchall()
     conn.close()
     return expenses
-
+def get_all_expenses(search_term=""): # Updated to join SupplierServices for service name
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    query = """
+    SELECT e.*, p.ProjectName, p.ReferenceID as ProjectRefID, serv.ServiceName as SupplierServiceName, serv.ReferenceID as ServiceRefID
+    FROM expenses e
+    LEFT JOIN projects p ON e.ProjectID = p.ProjectID
+    LEFT JOIN supplier_services serv ON e.SupplierServiceID = serv.ServiceID
+    """
+    params = []
+    if search_term:
+        query += " WHERE (e.Description LIKE ? OR e.Category LIKE ? OR e.Vendor LIKE ? OR p.ProjectName LIKE ? OR p.ReferenceID LIKE ? OR e.ReferenceID LIKE ? OR serv.ServiceName LIKE ? OR serv.ReferenceID LIKE ?)"
+        term = f"%{search_term}%"
+        params.extend([term, term, term, term, term, term, term, term])
+    query += " ORDER BY e.ExpenseDate DESC, e.ExpenseID DESC"
+    cursor.execute(query, params)
+    expenses = cursor.fetchall()
+    conn.close()
+    return expenses
+def get_expenses_by_project_id(project_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    query = """
+    SELECT e.*, p.ProjectName, p.ReferenceID as ProjectRefID, 
+           serv.ServiceName as SupplierServiceName, serv.ReferenceID as ServiceRefID
+    FROM expenses e
+    LEFT JOIN projects p ON e.ProjectID = p.ProjectID
+    LEFT JOIN supplier_services serv ON e.SupplierServiceID = serv.ServiceID
+    WHERE e.ProjectID = ?
+    ORDER BY e.ExpenseDate DESC, e.ExpenseID DESC
+    """
+    cursor.execute(query, (project_id,))
+    expenses = cursor.fetchall()
+    conn.close()
+    return expenses
 
 # --- Invoice CRUD (using your latest, ReferenceID generation improved) ---
 # ... (functions as in your latest database (3).py) ...
